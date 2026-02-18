@@ -1,0 +1,214 @@
+name: Build and Upload to COPR
+
+on:
+  schedule:
+    # Check for new kernels daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Force a build even if no new kernel'
+        required: false
+        default: 'false'
+        type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - 'patches/**'
+      - '.github/workflows/build.yml'
+      - 'build.sh'
+
+concurrency:
+  group: kernel-frl-build
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  FEDORA_VERSION: '43'
+  COPR_PROJECT: 'kernel-hdmi-frl'
+
+jobs:
+  check-kernel:
+    runs-on: ubuntu-latest
+    container:
+      image: fedora:43
+    outputs:
+      nvr: ${{ steps.check.outputs.nvr }}
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Install koji
+        run: dnf install -y koji git
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for new kernel version
+        id: check
+        run: |
+          # Get latest kernel NVR from Koji
+          NVR=$(koji list-tagged --latest f${{ env.FEDORA_VERSION }}-updates kernel | awk 'NR>2 && /^kernel-/{print $1; exit}')
+
+          if [ -z "${NVR}" ]; then
+            echo "Error: Could not determine kernel NVR from Koji"
+            exit 1
+          fi
+
+          echo "Latest Fedora kernel NVR: ${NVR}"
+          echo "nvr=${NVR}" >> $GITHUB_OUTPUT
+
+          # Read last built NVR from state file
+          LAST_NVR=""
+          if [ -f state/last_nvr ]; then
+            LAST_NVR=$(cat state/last_nvr | tr -d '[:space:]')
+          fi
+          echo "Last built NVR: ${LAST_NVR:-<none>}"
+
+          if [ "${{ github.event.inputs.force_build }}" = "true" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Force build requested"
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "Push event - rebuilding with updated patches"
+          elif [ "${NVR}" = "${LAST_NVR}" ]; then
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "Kernel ${NVR} already built, skipping"
+          else
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "New kernel ${NVR} - will build"
+          fi
+
+  build:
+    needs: check-kernel
+    if: needs.check-kernel.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: fedora:43
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf install -y \
+            git \
+            rpm-build \
+            rpmdevtools \
+            dnf-plugins-core \
+            python3-copr \
+            copr-cli \
+            koji \
+            wget
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup RPM build tree
+        run: rpmdev-setuptree
+
+      - name: Download kernel SRPM
+        run: |
+          cd ~/rpmbuild/SRPMS
+          NVR="${{ needs.check-kernel.outputs.nvr }}"
+          echo "Downloading SRPM for: ${NVR}"
+          koji download-build --arch=src "${NVR}"
+
+          SRPM=$(ls -1 kernel-*.src.rpm | head -1)
+          echo "KERNEL_SRPM=${SRPM}" >> $GITHUB_ENV
+          echo "Downloaded: ${SRPM}"
+
+      - name: Extract and patch SRPM
+        run: |
+          cd ~/rpmbuild/SRPMS
+          rpm -i ${KERNEL_SRPM}
+
+          # Copy our patches
+          cp $GITHUB_WORKSPACE/patches/*.patch ~/rpmbuild/SOURCES/
+
+      - name: Modify spec file
+        run: |
+          cd ~/rpmbuild/SPECS
+          PATCH_NUM=1000000
+
+          for patch in "$GITHUB_WORKSPACE"/patches/*.patch; do
+            pname=$(basename "${patch}")
+
+            # Add patch definition (idempotent)
+            if ! grep -qF "Patch${PATCH_NUM}: ${pname}" kernel.spec; then
+              sed -i "/^# END OF PATCH DEFINITIONS/i\\Patch${PATCH_NUM}: ${pname}" kernel.spec
+            fi
+
+            # Add patch application (idempotent)
+            if ! grep -qF "ApplyOptionalPatch ${pname}" kernel.spec; then
+              sed -i "/^# END OF PATCH APPLICATIONS/i\\ApplyOptionalPatch ${pname}" kernel.spec
+            fi
+
+            PATCH_NUM=$((PATCH_NUM + 1))
+          done
+
+          # Modify release to indicate patched build
+          sed -i 's/^%define specrelease \([0-9]*\)\(%{?buildid}%{?dist}\)/%define specrelease \1.hdmi.frl\2/' kernel.spec
+
+      - name: Build SRPM
+        run: |
+          cd ~/rpmbuild
+          rpmbuild -bs SPECS/kernel.spec
+
+          SRPM=$(ls -1t SRPMS/kernel-*.src.rpm | head -1)
+          echo "Built SRPM: ${SRPM}"
+          echo "PATCHED_SRPM=${SRPM}" >> $GITHUB_ENV
+
+          # Copy to workspace for artifact
+          cp "${SRPM}" $GITHUB_WORKSPACE/
+
+      - name: Upload SRPM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-srpm
+          path: "*.src.rpm"
+          retention-days: 7
+
+      - name: Setup COPR credentials
+        if: github.event_name != 'pull_request'
+        run: |
+          mkdir -p ~/.config
+          printf '%s\n' \
+            '[copr-cli]' \
+            'login = ${{ secrets.COPR_LOGIN }}' \
+            'username = ${{ secrets.COPR_USERNAME }}' \
+            'token = ${{ secrets.COPR_TOKEN }}' \
+            'copr_url = https://copr.fedorainfracloud.org' \
+            > ~/.config/copr
+
+      - name: Upload to COPR
+        if: github.event_name != 'pull_request'
+        run: |
+          SRPM=$(ls -1 $GITHUB_WORKSPACE/*.src.rpm | head -1)
+
+          # Submit build and exit immediately (don't wait for 7-hour build)
+          copr-cli build ${{ env.COPR_PROJECT }} "${SRPM}" \
+            --chroot fedora-${{ env.FEDORA_VERSION }}-x86_64 \
+            --timeout 25200 \
+            --nowait
+
+      - name: Update state file
+        if: github.event_name != 'pull_request'
+        run: |
+          NVR="${{ needs.check-kernel.outputs.nvr }}"
+          mkdir -p $GITHUB_WORKSPACE/state
+          echo "${NVR}" > $GITHUB_WORKSPACE/state/last_nvr
+
+      - name: Commit state update
+        if: github.event_name != 'pull_request'
+        run: |
+          cd $GITHUB_WORKSPACE
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add state/last_nvr
+          if git diff --cached --quiet; then
+            echo "No state change to commit"
+          else
+            git commit -m "state: update last_nvr to ${{ needs.check-kernel.outputs.nvr }}"
+            git push
+          fi
