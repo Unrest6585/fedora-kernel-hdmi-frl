@@ -4,7 +4,7 @@ Automated builds of the Fedora 43 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate 
 
 ## Patches Included
 
-74 patches from [mkopec/linux hdmi_frl_amd_staging](https://github.com/mkopec/linux/tree/hdmi_frl_amd_staging) branch, enabling HDMI 2.1 FRL support on AMD GPUs. This includes:
+Single squashed patch from [mkopec/linux hdmi_frl_amd_staging](https://github.com/mkopec/linux/tree/hdmi_frl_amd_staging) branch (80 commits), enabling HDMI 2.1 FRL support on AMD GPUs. This includes:
 
 - HPO (High-Performance Output) HDMI encoder instantiation for DCN 3.1-3.6
 - HDMI FRL link validation and bandwidth checking
