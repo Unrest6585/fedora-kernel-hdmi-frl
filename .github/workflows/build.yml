@@ -198,8 +198,6 @@ jobs:
           # Submit build and exit immediately (don't wait for 7-hour build)
           copr-cli build ${{ env.COPR_PROJECT }} "${SRPM}" \
             --chroot fedora-43-x86_64 \
-            --chroot fedora-44-x86_64 \
-            --chroot fedora-rawhide-x86_64 \
             --timeout 25200 \
             --nowait
 
