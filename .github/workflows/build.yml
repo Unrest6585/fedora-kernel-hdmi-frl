@@ -39,8 +39,8 @@ jobs:
       nvr: ${{ steps.check.outputs.nvr }}
       should_build: ${{ steps.check.outputs.should_build }}
     steps:
-      - name: Install koji
-        run: dnf install -y koji git
+      - name: Install dependencies
+        run: dnf install -y koji git rpmdevtools
 
       - name: Checkout
         uses: actions/checkout@v4
