@@ -48,13 +48,23 @@ jobs:
       - name: Check for new kernel version
         id: check
         run: |
-          # Get latest kernel NVR from Koji
-          NVR=$(koji list-tagged --latest f${{ env.FEDORA_VERSION }}-updates kernel | awk 'NR>2 && /^kernel-/{print $1; exit}')
+          # Get newest kernel NVR across Koji tags
+          NVR=""
+          for tag in f${{ env.FEDORA_VERSION }}-updates f${{ env.FEDORA_VERSION }}-updates-candidate f${{ env.FEDORA_VERSION }}; do
+            TAG_NVR=$(koji list-tagged --latest "${tag}" kernel 2>/dev/null | awk 'NR>2 && /^kernel-/{print $1; exit}')
+            if [ -n "${TAG_NVR}" ]; then
+              echo "Found in tag ${tag}: ${TAG_NVR}"
+              if [ -z "${NVR}" ] || { rc=0; rpmdev-vercmp "${TAG_NVR}" "${NVR}" &>/dev/null || rc=$?; [ "$rc" -eq 11 ]; }; then
+                NVR="${TAG_NVR}"
+              fi
+            fi
+          done
 
           if [ -z "${NVR}" ]; then
             echo "Error: Could not determine kernel NVR from Koji"
             exit 1
           fi
+          echo "Using newest: ${NVR}"
 
           echo "Latest Fedora kernel NVR: ${NVR}"
           echo "nvr=${NVR}" >> $GITHUB_OUTPUT
@@ -187,7 +197,9 @@ jobs:
 
           # Submit build and exit immediately (don't wait for 7-hour build)
           copr-cli build ${{ env.COPR_PROJECT }} "${SRPM}" \
-            --chroot fedora-${{ env.FEDORA_VERSION }}-x86_64 \
+            --chroot fedora-43-x86_64 \
+            --chroot fedora-44-x86_64 \
+            --chroot fedora-rawhide-x86_64 \
             --timeout 25200 \
             --nowait
 
