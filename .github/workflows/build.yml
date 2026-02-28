@@ -76,9 +76,22 @@ jobs:
           fi
           echo "Last built NVR: ${LAST_NVR:-<none>}"
 
+          # Check if NVR is older than what we already built
+          IS_NEWER=true
+          if [ -n "${LAST_NVR}" ]; then
+            rc=0; rpmdev-vercmp "${NVR}" "${LAST_NVR}" &>/dev/null || rc=$?
+            if [ "$rc" -eq 12 ]; then
+              IS_NEWER=false
+              echo "Available kernel ${NVR} is older than last built ${LAST_NVR}"
+            fi
+          fi
+
           if [ "${{ github.event.inputs.force_build }}" = "true" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "Force build requested"
+          elif [ "${IS_NEWER}" = "false" ]; then
+            echo "should_build=false" >> $GITHUB_OUTPUT
+            echo "Skipping: ${NVR} is older than last built ${LAST_NVR}"
           elif [ "${{ github.event_name }}" = "push" ]; then
             echo "should_build=true" >> $GITHUB_OUTPUT
             echo "Push event - rebuilding with updated patches"
