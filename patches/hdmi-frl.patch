@@ -3306,7 +3306,7 @@ index c8ff8ae85a03..0c2036f7f39e 100644
  
  	struct link_encoder *link_enc = pipe_ctx->link_res.dio_link_enc;
  	struct stream_encoder *stream_enc = pipe_ctx->stream_res.stream_enc;
-@@ -3057,6 +3058,15 @@ void dcn20_enable_stream(struct pipe_ctx *pipe_ctx)
+@@ -3057,4 +3058,13 @@ void dcn20_enable_stream(struct pipe_ctx *pipe_ctx)
  		} else {
  			dccg->funcs->enable_symclk32_se(dccg, dp_hpo_inst, phyd32clk);
  		}
@@ -3320,8 +3320,6 @@ index c8ff8ae85a03..0c2036f7f39e 100644
 +		hdmi_hpo_inst = pipe_ctx->stream_res.hpo_hdmi_stream_enc->inst;
 +		dccg->funcs->set_hdmistreamclk(dccg, DTBCLK0, tg->inst, hdmi_hpo_inst);
  	} else {
- 		if (dccg->funcs->enable_symclk_se)
- 			dccg->funcs->enable_symclk_se(dccg, stream_enc->stream_enc_inst,
 diff --git a/drivers/gpu/drm/amd/display/dc/hwss/dcn31/dcn31_hwseq.c b/drivers/gpu/drm/amd/display/dc/hwss/dcn31/dcn31_hwseq.c
 index d1ecdb92b072..3d69122446ae 100644
 --- a/drivers/gpu/drm/amd/display/dc/hwss/dcn31/dcn31_hwseq.c
@@ -3435,10 +3433,7 @@ index 5eda7648d0d2..40a6301f3037 100644
  		enum phyd32clk_clock_source *phyd32clk,
  		unsigned int *tmds_div,
  		uint32_t *early_control)
-@@ -922,6 +923,9 @@ static void dcn401_enable_stream_calc(
- 
- 	*phyd32clk = get_phyd32clk_src(pipe_ctx->stream->link);
- 
+@@ -925,3 +926,6 @@ static void dcn401_enable_stream_calc(
 +	if (dc_is_hdmi_frl_signal(pipe_ctx->stream->signal))
 +		*hdmi_hpo_inst = pipe_ctx->stream_res.hpo_hdmi_stream_enc->inst;
 +
