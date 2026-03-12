@@ -43,7 +43,7 @@ jobs:
         run: dnf install -y koji git rpmdevtools
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Check for new kernel version
         id: check
@@ -125,7 +125,7 @@ jobs:
             wget
 
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup RPM build tree
         run: rpmdev-setuptree
@@ -186,7 +186,7 @@ jobs:
           cp "${SRPM}" $GITHUB_WORKSPACE/
 
       - name: Upload SRPM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: kernel-srpm
           path: "*.src.rpm"
