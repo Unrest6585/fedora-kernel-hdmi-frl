@@ -22,7 +22,7 @@ Single squashed patch from [mkopec/linux hdmi_frl_stable](https://github.com/mko
 
 ```bash
 # Enable the COPR repository
-sudo dnf copr enable YOUR_USERNAME/kernel-hdmi-frl
+sudo dnf copr enable sneed/kernel-hdmi-frl
 
 # Install the patched kernel
 sudo dnf install kernel
@@ -38,7 +38,7 @@ sudo reboot
 sudo dnf install rpm-build rpmdevtools koji cpio
 
 # Clone this repository
-git clone https://github.com/YOUR_USERNAME/fedora-kernel-hdmi-frl.git
+git clone https://github.com/sneed/fedora-kernel-hdmi-frl.git
 cd fedora-kernel-hdmi-frl
 
 # Run the build script
