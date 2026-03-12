@@ -191,6 +191,27 @@ jobs:
           path: "*.src.rpm"
           retention-days: 7
 
+      - name: Publish SRPM to GitHub Releases
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd $GITHUB_WORKSPACE
+          git config --global --add safe.directory $GITHUB_WORKSPACE
+          NVR="${{ needs.check-kernel.outputs.nvr }}"
+          SRPM=$(ls -1 $GITHUB_WORKSPACE/*.src.rpm | head -1)
+          # Replace any existing release for this NVR so re-runs work cleanly
+          gh release delete "${NVR}" --yes 2>/dev/null || true
+          gh release create "${NVR}" \
+            --target main \
+            --title "kernel ${NVR}" \
+            --notes "Patched kernel SRPM for ${NVR} with HDMI FRL support" \
+            "${SRPM}"
+          SRPM_BASENAME=$(basename "${SRPM}")
+          SRPM_URL="https://github.com/${{ github.repository }}/releases/download/${NVR}/${SRPM_BASENAME}"
+          echo "SRPM_URL=${SRPM_URL}" >> $GITHUB_ENV
+          echo "SRPM published to: ${SRPM_URL}"
+
       - name: Setup COPR credentials
         if: github.event_name != 'pull_request'
         run: |
@@ -206,10 +227,8 @@ jobs:
       - name: Upload to COPR
         if: github.event_name != 'pull_request'
         run: |
-          SRPM=$(ls -1 $GITHUB_WORKSPACE/*.src.rpm | head -1)
-
-          # Submit build and exit immediately (don't wait for 7-hour build)
-          copr-cli build ${{ env.COPR_PROJECT }} "${SRPM}" \
+          # Use buildurl so COPR fetches from GitHub Releases CDN
+          copr-cli build ${{ env.COPR_PROJECT }} "${{ env.SRPM_URL }}" \
             --chroot fedora-43-x86_64 \
             --timeout 25200 \
             --nowait
