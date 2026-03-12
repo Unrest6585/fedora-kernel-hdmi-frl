@@ -115,6 +115,7 @@ jobs:
         run: |
           dnf install -y \
             git \
+            gh \
             rpm-build \
             rpmdevtools \
             dnf-plugins-core \
