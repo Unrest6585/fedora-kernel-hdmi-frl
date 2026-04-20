@@ -1,6 +1,6 @@
 # Fedora Kernel with HDMI 2.1 FRL Patches
 
-Automated builds of the Fedora stable kernel (6.19.x) with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. Builds target Fedora 43 and 44.
+Automated builds of the Fedora stable kernel (6.19.x) with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. The current workflow targets Fedora 43.
 
 ## Patches Included
 
@@ -21,7 +21,7 @@ Single squashed patch from [mkopec/linux hdmi_frl_stable](https://github.com/mko
 ### From COPR (Recommended)
 
 ```bash
-# Enable the COPR repository
+# Enable the default FRL COPR repository
 sudo dnf copr enable sneed/kernel-hdmi-frl
 
 # Install the patched kernel
@@ -30,6 +30,16 @@ sudo dnf install kernel
 # Reboot to use the new kernel
 sudo reboot
 ```
+
+For the ROCm P2P-enabled variant:
+
+```bash
+sudo dnf copr enable sneed/kernel-hdmi-frl-p2p
+sudo dnf install kernel
+sudo reboot
+```
+
+Do not enable both COPRs at the same time. Both publish `kernel` packages, so keeping a single variant enabled avoids ambiguous update selection.
 
 ### Manual Build
 
@@ -41,9 +51,11 @@ sudo dnf install rpm-build rpmdevtools koji cpio
 git clone https://github.com/sneed/fedora-kernel-hdmi-frl.git
 cd fedora-kernel-hdmi-frl
 
-# Run the build script
-chmod +x build.sh
+# Run the default FRL build
 ./build.sh
+
+# Or build the ROCm P2P-enabled variant
+ENABLE_P2P=1 ./build.sh
 
 # Install the resulting SRPM or build locally
 rpmbuild --rebuild kernel-*.src.rpm
@@ -75,6 +87,8 @@ The workflow runs:
 - **Daily** at 6 AM UTC to check for new kernels
 - **On push** when patches or workflow files change
 - **Manually** via workflow_dispatch (with optional force build)
+
+The workflow publishes both `sneed/kernel-hdmi-frl` and `sneed/kernel-hdmi-frl-p2p`, and tracks their last built Fedora kernel NVR independently.
 
 ## Upstream Source
 

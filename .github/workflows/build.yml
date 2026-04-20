@@ -28,7 +28,6 @@ permissions:
 
 env:
   FEDORA_VERSION: '43'
-  COPR_PROJECT: 'kernel-hdmi-frl'
 
 jobs:
   check-kernel:
@@ -48,6 +47,20 @@ jobs:
       - name: Check for new kernel version
         id: check
         run: |
+          LEGACY_STATE="state/last_nvr"
+          DEFAULT_STATE="state/last_nvr_default"
+          P2P_STATE="state/last_nvr_p2p"
+
+          get_last_nvr() {
+            local state_file="$1"
+
+            if [ -f "${state_file}" ]; then
+              tr -d '[:space:]' < "${state_file}"
+            elif [ "${state_file}" = "${DEFAULT_STATE}" ] && [ -f "${LEGACY_STATE}" ]; then
+              tr -d '[:space:]' < "${LEGACY_STATE}"
+            fi
+          }
+
           # Get newest kernel NVR across Koji tags
           NVR=""
           for tag in f${{ env.FEDORA_VERSION }}-updates f${{ env.FEDORA_VERSION }}-updates-candidate f${{ env.FEDORA_VERSION }}; do
@@ -64,43 +77,41 @@ jobs:
             echo "Error: Could not determine kernel NVR from Koji"
             exit 1
           fi
-          echo "Using newest: ${NVR}"
 
           echo "Latest Fedora kernel NVR: ${NVR}"
-          echo "nvr=${NVR}" >> $GITHUB_OUTPUT
+          echo "nvr=${NVR}" >> "$GITHUB_OUTPUT"
 
-          # Read last built NVR from state file
-          LAST_NVR=""
-          if [ -f state/last_nvr ]; then
-            LAST_NVR=$(cat state/last_nvr | tr -d '[:space:]')
-          fi
-          echo "Last built NVR: ${LAST_NVR:-<none>}"
+          SHOULD_BUILD=false
+          for state_file in "${DEFAULT_STATE}" "${P2P_STATE}"; do
+            LAST_NVR=$(get_last_nvr "${state_file}")
+            echo "State ${state_file}: ${LAST_NVR:-<none>}"
 
-          # Check if NVR is older than what we already built
-          IS_NEWER=true
-          if [ -n "${LAST_NVR}" ]; then
-            rc=0; rpmdev-vercmp "${NVR}" "${LAST_NVR}" &>/dev/null || rc=$?
-            if [ "$rc" -eq 12 ]; then
-              IS_NEWER=false
-              echo "Available kernel ${NVR} is older than last built ${LAST_NVR}"
+            if [ -z "${LAST_NVR}" ]; then
+              SHOULD_BUILD=true
+              continue
             fi
-          fi
+
+            rc=0
+            rpmdev-vercmp "${NVR}" "${LAST_NVR}" &>/dev/null || rc=$?
+            if [ "${rc}" -eq 11 ]; then
+              SHOULD_BUILD=true
+            elif [ "${rc}" -eq 12 ]; then
+              echo "Available kernel ${NVR} is older than recorded ${LAST_NVR} in ${state_file}"
+            fi
+          done
 
           if [ "${{ github.event.inputs.force_build }}" = "true" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "Force build requested"
-          elif [ "${IS_NEWER}" = "false" ]; then
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "Skipping: ${NVR} is older than last built ${LAST_NVR}"
           elif [ "${{ github.event_name }}" = "push" ]; then
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "Push event - rebuilding with updated patches"
-          elif [ "${NVR}" = "${LAST_NVR}" ]; then
-            echo "should_build=false" >> $GITHUB_OUTPUT
-            echo "Kernel ${NVR} already built, skipping"
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Push event - rebuilding both variants"
+          elif [ "${SHOULD_BUILD}" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "At least one variant needs a rebuild"
           else
-            echo "should_build=true" >> $GITHUB_OUTPUT
-            echo "New kernel ${NVR} - will build"
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "All variants already built for ${NVR}"
           fi
 
   build:
@@ -108,6 +119,20 @@ jobs:
     if: needs.check-kernel.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            copr_project: kernel-hdmi-frl
+            enable_p2p: '0'
+            release_suffix: '.hdmi.frl'
+            state_file: state/last_nvr_default
+          - variant: p2p
+            copr_project: kernel-hdmi-frl-p2p
+            enable_p2p: '1'
+            release_suffix: '.hdmi.frl.p2p'
+            state_file: state/last_nvr_p2p
     container:
       image: fedora:43
     steps:
@@ -115,106 +140,71 @@ jobs:
         run: |
           dnf install -y \
             git \
-            gh \
             rpm-build \
             rpmdevtools \
             dnf-plugins-core \
             python3-copr \
             copr-cli \
             koji \
-            wget
+            wget \
+            cpio
 
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Setup RPM build tree
-        run: rpmdev-setuptree
-
-      - name: Download kernel SRPM
+      - name: Check variant state
+        id: variant
         run: |
-          cd ~/rpmbuild/SRPMS
+          LEGACY_STATE="state/last_nvr"
+          STATE_FILE="${{ matrix.state_file }}"
+          LAST_NVR=""
+
+          if [ -f "${STATE_FILE}" ]; then
+            LAST_NVR=$(tr -d '[:space:]' < "${STATE_FILE}")
+          elif [ "${STATE_FILE}" = "state/last_nvr_default" ] && [ -f "${LEGACY_STATE}" ]; then
+            LAST_NVR=$(tr -d '[:space:]' < "${LEGACY_STATE}")
+          fi
+
           NVR="${{ needs.check-kernel.outputs.nvr }}"
-          echo "Downloading SRPM for: ${NVR}"
-          koji download-build --arch=src "${NVR}"
+          SHOULD_BUILD=false
 
-          SRPM=$(ls -1 kernel-*.src.rpm | head -1)
-          echo "KERNEL_SRPM=${SRPM}" >> $GITHUB_ENV
-          echo "Downloaded: ${SRPM}"
-
-      - name: Extract and patch SRPM
-        run: |
-          cd ~/rpmbuild/SRPMS
-          rpm -i ${KERNEL_SRPM}
-
-          # Copy our patches
-          cp $GITHUB_WORKSPACE/patches/*.patch ~/rpmbuild/SOURCES/
-
-      - name: Modify spec file
-        run: |
-          cd ~/rpmbuild/SPECS
-          PATCH_NUM=1000000
-
-          for patch in "$GITHUB_WORKSPACE"/patches/*.patch; do
-            pname=$(basename "${patch}")
-
-            # Add patch definition (idempotent)
-            if ! grep -qF "Patch${PATCH_NUM}: ${pname}" kernel.spec; then
-              sed -i "/^# END OF PATCH DEFINITIONS/i\\Patch${PATCH_NUM}: ${pname}" kernel.spec
+          if [ "${{ github.event.inputs.force_build }}" = "true" ] || [ "${{ github.event_name }}" = "push" ]; then
+            SHOULD_BUILD=true
+          elif [ -z "${LAST_NVR}" ]; then
+            SHOULD_BUILD=true
+          else
+            rc=0
+            rpmdev-vercmp "${NVR}" "${LAST_NVR}" &>/dev/null || rc=$?
+            if [ "${rc}" -eq 11 ]; then
+              SHOULD_BUILD=true
             fi
+          fi
 
-            # Add patch application (idempotent)
-            if ! grep -qF "ApplyOptionalPatch ${pname}" kernel.spec; then
-              sed -i "/^# END OF PATCH APPLICATIONS/i\\ApplyOptionalPatch ${pname}" kernel.spec
-            fi
-
-            PATCH_NUM=$((PATCH_NUM + 1))
-          done
-
-          # Modify release to indicate patched build
-          sed -i 's/^%define specrelease \([0-9]*\)\(%{?buildid}%{?dist}\)/%define specrelease \1.hdmi.frl\2/' kernel.spec
+          echo "Last built for ${{ matrix.variant }}: ${LAST_NVR:-<none>}"
+          echo "should_build=${SHOULD_BUILD}" >> "$GITHUB_OUTPUT"
 
       - name: Build SRPM
+        if: steps.variant.outputs.should_build == 'true'
+        env:
+          ENABLE_P2P: ${{ matrix.enable_p2p }}
         run: |
-          cd ~/rpmbuild
-          rpmbuild -bs SPECS/kernel.spec
+          rm -f "$GITHUB_WORKSPACE"/kernel-*${{ matrix.release_suffix }}*.src.rpm
+          bash "$GITHUB_WORKSPACE/build.sh"
 
-          SRPM=$(ls -1t SRPMS/kernel-*.src.rpm | head -1)
+          SRPM=$(ls -1t "$GITHUB_WORKSPACE"/kernel-*${{ matrix.release_suffix }}*.src.rpm | head -1)
           echo "Built SRPM: ${SRPM}"
-          echo "PATCHED_SRPM=${SRPM}" >> $GITHUB_ENV
-
-          # Copy to workspace for artifact
-          cp "${SRPM}" $GITHUB_WORKSPACE/
+          echo "PATCHED_SRPM=${SRPM}" >> "$GITHUB_ENV"
 
       - name: Upload SRPM artifact
+        if: steps.variant.outputs.should_build == 'true'
         uses: actions/upload-artifact@v5
         with:
-          name: kernel-srpm
-          path: "*.src.rpm"
+          name: kernel-srpm-${{ matrix.variant }}
+          path: kernel-*${{ matrix.release_suffix }}*.src.rpm
           retention-days: 7
 
-      - name: Publish SRPM to GitHub Releases
-        if: github.event_name != 'pull_request'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          cd $GITHUB_WORKSPACE
-          git config --global --add safe.directory $GITHUB_WORKSPACE
-          NVR="${{ needs.check-kernel.outputs.nvr }}"
-          SRPM=$(ls -1 $GITHUB_WORKSPACE/*.src.rpm | head -1)
-          # Replace any existing release for this NVR so re-runs work cleanly
-          gh release delete "${NVR}" --yes 2>/dev/null || true
-          gh release create "${NVR}" \
-            --target main \
-            --title "kernel ${NVR}" \
-            --notes "Patched kernel SRPM for ${NVR} with HDMI FRL support" \
-            "${SRPM}"
-          SRPM_BASENAME=$(basename "${SRPM}")
-          SRPM_URL="https://github.com/${{ github.repository }}/releases/download/${NVR}/${SRPM_BASENAME}"
-          echo "SRPM_URL=${SRPM_URL}" >> $GITHUB_ENV
-          echo "SRPM published to: ${SRPM_URL}"
-
       - name: Setup COPR credentials
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.variant.outputs.should_build == 'true'
         run: |
           mkdir -p ~/.config
           printf '%s\n' \
@@ -226,32 +216,78 @@ jobs:
             > ~/.config/copr
 
       - name: Upload to COPR
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && steps.variant.outputs.should_build == 'true'
         run: |
-          # Use buildurl so COPR fetches from GitHub Releases CDN
-          copr-cli build ${{ env.COPR_PROJECT }} "${{ env.SRPM_URL }}" \
-            --chroot fedora-43-x86_64 \
+          copr-cli build "${{ matrix.copr_project }}" "${PATCHED_SRPM}" \
+            --chroot fedora-${{ env.FEDORA_VERSION }}-x86_64 \
             --timeout 25200 \
             --nowait
 
-      - name: Update state file
-        if: github.event_name != 'pull_request'
+  publish-release:
+    needs:
+      - check-kernel
+      - build
+    if: github.event_name != 'pull_request' && needs.check-kernel.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download SRPM artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          pattern: kernel-srpm-*
+          merge-multiple: true
+
+      - name: Publish SRPMs to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NVR="${{ needs.check-kernel.outputs.nvr }}"
-          mkdir -p $GITHUB_WORKSPACE/state
-          echo "${NVR}" > $GITHUB_WORKSPACE/state/last_nvr
+
+          if ! ls artifacts/*.src.rpm >/dev/null 2>&1; then
+            echo "No SRPM artifacts to publish"
+            exit 1
+          fi
+
+          if gh release view "${NVR}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "${NVR}" artifacts/*.src.rpm \
+              --repo "${{ github.repository }}" \
+              --clobber
+          else
+            gh release create "${NVR}" \
+              --repo "${{ github.repository }}" \
+              --target main \
+              --title "kernel ${NVR}" \
+              --notes "Patched kernel SRPMs for ${NVR} with HDMI FRL support" \
+              artifacts/*.src.rpm
+          fi
+
+  update-state:
+    needs:
+      - check-kernel
+      - build
+      - publish-release
+    if: github.event_name != 'pull_request' && needs.check-kernel.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Update state files
+        run: |
+          NVR="${{ needs.check-kernel.outputs.nvr }}"
+          mkdir -p state
+          printf '%s\n' "${NVR}" > state/last_nvr_default
+          printf '%s\n' "${NVR}" > state/last_nvr_p2p
+          rm -f state/last_nvr
 
       - name: Commit state update
-        if: github.event_name != 'pull_request'
         run: |
-          cd $GITHUB_WORKSPACE
-          git config --global --add safe.directory $GITHUB_WORKSPACE
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add state/last_nvr
+          git add state/last_nvr_default state/last_nvr_p2p state/last_nvr
           if git diff --cached --quiet; then
             echo "No state change to commit"
           else
-            git commit -m "state: update last_nvr to ${{ needs.check-kernel.outputs.nvr }}"
+            git commit -m "state: update last built NVRs to ${{ needs.check-kernel.outputs.nvr }}"
             git push
           fi

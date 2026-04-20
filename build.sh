@@ -4,9 +4,16 @@
 set -euo pipefail
 
 FEDORA_VERSION="${FEDORA_VERSION:-43}"
+ENABLE_P2P="${ENABLE_P2P:-0}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 PATCHES_DIR="${SCRIPT_DIR}/patches"
+
+if [ "${ENABLE_P2P}" = "1" ]; then
+    RELEASE_SUFFIX=".hdmi.frl.p2p"
+else
+    RELEASE_SUFFIX=".hdmi.frl"
+fi
 
 echo "==> Setting up build environment..."
 mkdir -p "${BUILD_DIR}"
@@ -49,6 +56,19 @@ rpm2cpio "${SRPM}" | cpio -idmv
 echo "==> Copying HDMI FRL patches..."
 cp "${PATCHES_DIR}"/*.patch .
 
+# Optionally inject ROCm P2P config into kernel-local
+# (CONFIG_HSA_AMD_P2P depends on CONFIG_DMABUF_MOVE_NOTIFY, both off by default in Fedora)
+if [ "${ENABLE_P2P}" = "1" ]; then
+    echo "==> Injecting ROCm P2P config into kernel-local..."
+    cat > kernel-local <<'EOF'
+# Enable KFD peer-to-peer link creation between AMD GPUs over PCIe.
+# Without these, kfd_add_peer_prop() / p2p_links population is #ifdef'd out
+# and hipDeviceCanAccessPeer returns false for every GPU pair.
+CONFIG_DMABUF_MOVE_NOTIFY=y
+CONFIG_HSA_AMD_P2P=y
+EOF
+fi
+
 # Modify the spec file to include our patches
 echo "==> Modifying kernel.spec..."
 
@@ -69,15 +89,15 @@ for patch in "${PATCHES_DIR}"/*.patch; do
     PATCH_NUM=$((PATCH_NUM + 1))
 done
 
-# Append .hdmi.frl to the specrelease (before %{?buildid}%{?dist})
-sed -i 's/^%define specrelease \(.*\)\(%{?buildid}%{?dist}\)/%define specrelease \1.hdmi.frl\2/' kernel.spec
+# Append release suffix to the specrelease (before %{?buildid}%{?dist})
+sed -i "s/^%define specrelease \(.*\)\(%{?buildid}%{?dist}\)/%define specrelease \1${RELEASE_SUFFIX}\2/" kernel.spec
 
 echo "==> Building SRPM..."
 rpmbuild -bs kernel.spec \
     --define "_sourcedir ${BUILD_DIR}" \
     --define "_srcrpmdir ${BUILD_DIR}"
 
-NEW_SRPM=$(ls -1t kernel-*.hdmi.frl*.src.rpm | head -1)
+NEW_SRPM=$(ls -1t kernel-*${RELEASE_SUFFIX}*.src.rpm | head -1)
 echo "==> Created: ${NEW_SRPM}"
 mv "${NEW_SRPM}" "${SCRIPT_DIR}/"
 
