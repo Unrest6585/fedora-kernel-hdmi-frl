@@ -5,6 +5,7 @@ set -euo pipefail
 
 FEDORA_VERSION="${FEDORA_VERSION:-43}"
 ENABLE_P2P="${ENABLE_P2P:-0}"
+KERNEL_NVR="${KERNEL_NVR:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 PATCHES_DIR="${SCRIPT_DIR}/patches"
@@ -19,26 +20,31 @@ echo "==> Setting up build environment..."
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
-# Find the newest kernel NVR across Koji tags
-echo "==> Looking up latest kernel NVR for f${FEDORA_VERSION}..."
-NVR=""
-for tag in "f${FEDORA_VERSION}-updates" "f${FEDORA_VERSION}-updates-candidate" "f${FEDORA_VERSION}"; do
-    TAG_NVR=$(koji list-tagged --latest "${tag}" kernel 2>/dev/null \
-        | awk 'NR>2 && /^kernel-/{print $1; exit}')
-    if [ -n "${TAG_NVR}" ]; then
-        echo "    Found in tag ${tag}: ${TAG_NVR}"
-        # Keep the highest version across all tags (exit 11 = first is newer)
-        if [ -z "${NVR}" ] || { rc=0; rpmdev-vercmp "${TAG_NVR}" "${NVR}" &>/dev/null || rc=$?; [ "$rc" -eq 11 ]; }; then
-            NVR="${TAG_NVR}"
+if [ -n "${KERNEL_NVR}" ]; then
+    NVR="${KERNEL_NVR}"
+    echo "==> Using pinned kernel NVR: ${NVR}"
+else
+    # Find the newest kernel NVR across Koji tags
+    echo "==> Looking up latest kernel NVR for f${FEDORA_VERSION}..."
+    NVR=""
+    for tag in "f${FEDORA_VERSION}-updates" "f${FEDORA_VERSION}-updates-candidate" "f${FEDORA_VERSION}"; do
+        TAG_NVR=$(koji list-tagged --latest "${tag}" kernel 2>/dev/null \
+            | awk 'NR>2 && /^kernel-/{print $1; exit}')
+        if [ -n "${TAG_NVR}" ]; then
+            echo "    Found in tag ${tag}: ${TAG_NVR}"
+            # Keep the highest version across all tags (exit 11 = first is newer)
+            if [ -z "${NVR}" ] || { rc=0; rpmdev-vercmp "${TAG_NVR}" "${NVR}" &>/dev/null || rc=$?; [ "$rc" -eq 11 ]; }; then
+                NVR="${TAG_NVR}"
+            fi
         fi
-    fi
-done
+    done
 
-if [ -z "${NVR}" ]; then
-    echo "Error: Could not determine kernel NVR from Koji"
-    exit 1
+    if [ -z "${NVR}" ]; then
+        echo "Error: Could not determine kernel NVR from Koji"
+        exit 1
+    fi
+    echo "==> Using newest: ${NVR}"
 fi
-echo "==> Using newest: ${NVR}"
 
 # Download the SRPM from Koji
 SRPM="${NVR}.src.rpm"

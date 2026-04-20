@@ -82,6 +82,7 @@ jobs:
           echo "nvr=${NVR}" >> "$GITHUB_OUTPUT"
 
           SHOULD_BUILD=false
+          HAS_OLDER_STATE=false
           for state_file in "${DEFAULT_STATE}" "${P2P_STATE}"; do
             LAST_NVR=$(get_last_nvr "${state_file}")
             echo "State ${state_file}: ${LAST_NVR:-<none>}"
@@ -96,6 +97,7 @@ jobs:
             if [ "${rc}" -eq 11 ]; then
               SHOULD_BUILD=true
             elif [ "${rc}" -eq 12 ]; then
+              HAS_OLDER_STATE=true
               echo "Available kernel ${NVR} is older than recorded ${LAST_NVR} in ${state_file}"
             fi
           done
@@ -103,6 +105,9 @@ jobs:
           if [ "${{ github.event.inputs.force_build }}" = "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "Force build requested"
+          elif [ "${HAS_OLDER_STATE}" = "true" ]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: Koji lookup is older than recorded state"
           elif [ "${{ github.event_name }}" = "push" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
             echo "Push event - rebuilding both variants"
@@ -187,6 +192,7 @@ jobs:
         if: steps.variant.outputs.should_build == 'true'
         env:
           ENABLE_P2P: ${{ matrix.enable_p2p }}
+          KERNEL_NVR: ${{ needs.check-kernel.outputs.nvr }}
         run: |
           rm -f "$GITHUB_WORKSPACE"/kernel-*${{ matrix.release_suffix }}*.src.rpm
           bash "$GITHUB_WORKSPACE/build.sh"
