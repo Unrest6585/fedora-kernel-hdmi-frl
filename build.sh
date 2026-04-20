@@ -27,7 +27,11 @@ else
     # Find the newest kernel NVR across Koji tags
     echo "==> Looking up latest kernel NVR for f${FEDORA_VERSION}..."
     NVR=""
-    for tag in "f${FEDORA_VERSION}-updates" "f${FEDORA_VERSION}-updates-candidate" "f${FEDORA_VERSION}"; do
+    for tag in \
+        "f${FEDORA_VERSION}-updates-testing" \
+        "f${FEDORA_VERSION}-updates" \
+        "f${FEDORA_VERSION}-updates-candidate" \
+        "f${FEDORA_VERSION}"; do
         TAG_NVR=$(koji list-tagged --latest "${tag}" kernel 2>/dev/null \
             | awk 'NR>2 && /^kernel-/{print $1; exit}')
         if [ -n "${TAG_NVR}" ]; then
