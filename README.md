@@ -1,19 +1,21 @@
 # Fedora Kernel with HDMI 2.1 FRL Patches
 
-Automated builds of the Fedora stable kernel (6.19.x) with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. The current workflow targets Fedora 43.
+Automated builds of the Fedora 43 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. The current patch is based on the experimental `hdmi_frl` branch and is being tested against Fedora 43 kernel 7.0.1.
 
 ## Patches Included
 
-Single squashed patch from [mkopec/linux hdmi_frl_stable](https://github.com/mkopec/linux/tree/hdmi_frl_stable) branch (103 commits against v6.19.3), enabling HDMI 2.1 FRL support on AMD GPUs. This includes:
+Single squashed, kernel-only patch from [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl), enabling HDMI 2.1 FRL support on AMD GPUs. This includes:
 
-- HPO (High-Performance Output) HDMI encoder instantiation for DCN 3.1-3.6
+- HPO (High-Performance Output) HDMI encoder support for newer DCN generations
 - HDMI FRL link validation and bandwidth checking
 - DTBCLK programming for HDMI FRL
 - HDMI FRL signal upgrade and rate negotiation
-- HDMI DSC (Display Stream Compression) support over FRL
-- EDID FRL capability parsing improvements
+- EDID FRL and HDMI DSC capability parsing improvements
 - HDMI VRR (Variable Refresh Rate) support
 - ALLM (Auto Low Latency Mode) support
+- YCbCr 4:2:0 handling
+- HDMI audio fixes for FRL
+- DPMS and shutdown handling updates
 - Passive VRR properties
 
 ## Installation
@@ -92,7 +94,7 @@ The workflow publishes both `sneed/kernel-hdmi-frl` and `sneed/kernel-hdmi-frl-p
 
 ## Upstream Source
 
-- **Patches from**: [mkopec/linux hdmi_frl_stable](https://github.com/mkopec/linux/tree/hdmi_frl_stable)
+- **Patches from**: [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl)
 - **Authors**: Michal Kopec, Tomasz Pakula
 
 ## License
