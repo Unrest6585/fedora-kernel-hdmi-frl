@@ -27,13 +27,13 @@ permissions:
   contents: write
 
 env:
-  FEDORA_VERSION: '43'
+  FEDORA_VERSION: '44'
 
 jobs:
   check-kernel:
     runs-on: ubuntu-latest
     container:
-      image: fedora:43
+      image: fedora:44
     outputs:
       nvr: ${{ steps.check.outputs.nvr }}
       should_build: ${{ steps.check.outputs.should_build }}
@@ -143,7 +143,7 @@ jobs:
             release_suffix: '.hdmi.frl.p2p'
             state_file: state/last_nvr_p2p
     container:
-      image: fedora:43
+      image: fedora:44
     steps:
       - name: Install dependencies
         run: |

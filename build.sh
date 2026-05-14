@@ -3,7 +3,7 @@
 # Downloads kernel SRPM from Koji, applies FRL patch, builds patched SRPM
 set -euo pipefail
 
-FEDORA_VERSION="${FEDORA_VERSION:-43}"
+FEDORA_VERSION="${FEDORA_VERSION:-44}"
 ENABLE_P2P="${ENABLE_P2P:-0}"
 KERNEL_NVR="${KERNEL_NVR:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

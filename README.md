@@ -1,6 +1,8 @@
 # Fedora Kernel with HDMI 2.1 FRL Patches
 
-Automated builds of the Fedora 43 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. The current patch is based on the experimental `hdmi_frl` branch and is being tested against Fedora 43 kernel 7.0.1.
+Automated builds of the Fedora 44 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. The current patch is based on the experimental `hdmi_frl` branch and is being tested against Fedora 44 kernels.
+
+Fedora 44 is the active build target. Fedora 43 COPR chroots are left enabled with their last successful builds, but new Fedora 43 kernels are no longer built.
 
 ## Patches Included
 

@@ -1,5 +1,6 @@
 # Build artifacts
 build/
+linux-build/
 *.src.rpm
 *.rpm
 builder-live.log.gz.txt
@@ -12,6 +13,8 @@ results/
 # Editor files
 *~
 *.swp
+.codex
+.aider.chat.history.md
 .vscode/
 .idea/
 

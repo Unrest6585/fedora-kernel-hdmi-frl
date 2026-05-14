@@ -4,7 +4,7 @@ Date: Wed, 25 Feb 2026 00:00:00 +0000
 Subject: [PATCH] drm/amd/display: HDMI 2.1 FRL support
 
 Squashed kernel-only diff from mkopec/linux hdmi_frl branch, replacing the
-older hdmi_frl_stable patch for Fedora 43 kernel 7.0.1 testing.
+older hdmi_frl_stable patch used during Fedora 43 kernel testing.
 
 Includes HDMI FRL link training, HPO HDMI encoder support, bandwidth and
 clock handling, HDMI VRR/ALLM support, YCbCr 4:2:0 handling, audio fixes,
