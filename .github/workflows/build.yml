@@ -62,12 +62,10 @@ jobs:
             fi
           }
 
-          # Get newest kernel NVR across Koji tags
+          # Get newest stable kernel NVR across Koji tags
           NVR=""
           for tag in \
-            f${{ env.FEDORA_VERSION }}-updates-testing \
             f${{ env.FEDORA_VERSION }}-updates \
-            f${{ env.FEDORA_VERSION }}-updates-candidate \
             f${{ env.FEDORA_VERSION }}; do
             TAG_NVR=$(koji list-tagged --latest "${tag}" kernel 2>/dev/null | awk 'NR>2 && /^kernel-/{print $1; exit}')
             if [ -n "${TAG_NVR}" ]; then
@@ -83,7 +81,7 @@ jobs:
             exit 1
           fi
 
-          echo "Latest Fedora kernel NVR: ${NVR}"
+          echo "Latest stable Fedora kernel NVR: ${NVR}"
           echo "nvr=${NVR}" >> "$GITHUB_OUTPUT"
 
           SHOULD_BUILD=false

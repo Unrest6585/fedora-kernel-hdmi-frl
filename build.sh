@@ -24,13 +24,11 @@ if [ -n "${KERNEL_NVR}" ]; then
     NVR="${KERNEL_NVR}"
     echo "==> Using pinned kernel NVR: ${NVR}"
 else
-    # Find the newest kernel NVR across Koji tags
-    echo "==> Looking up latest kernel NVR for f${FEDORA_VERSION}..."
+    # Find the newest stable kernel NVR across Koji tags.
+    echo "==> Looking up latest stable kernel NVR for f${FEDORA_VERSION}..."
     NVR=""
     for tag in \
-        "f${FEDORA_VERSION}-updates-testing" \
         "f${FEDORA_VERSION}-updates" \
-        "f${FEDORA_VERSION}-updates-candidate" \
         "f${FEDORA_VERSION}"; do
         TAG_NVR=$(koji list-tagged --latest "${tag}" kernel 2>/dev/null \
             | awk 'NR>2 && /^kernel-/{print $1; exit}')
@@ -47,7 +45,7 @@ else
         echo "Error: Could not determine kernel NVR from Koji"
         exit 1
     fi
-    echo "==> Using newest: ${NVR}"
+    echo "==> Using newest stable: ${NVR}"
 fi
 
 # Download the SRPM from Koji
