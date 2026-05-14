@@ -153,6 +153,7 @@ jobs:
             rpm-build \
             rpmdevtools \
             dnf-plugins-core \
+            gh \
             python3-copr \
             copr-cli \
             koji \
@@ -206,13 +207,26 @@ jobs:
           echo "Built SRPM: ${SRPM}"
           echo "PATCHED_SRPM=${SRPM}" >> "$GITHUB_ENV"
 
-      - name: Upload SRPM artifact
-        if: steps.variant.outputs.should_build == 'true'
-        uses: actions/upload-artifact@v5
-        with:
-          name: kernel-srpm-${{ matrix.variant }}
-          path: kernel-*${{ matrix.release_suffix }}*.src.rpm
-          retention-days: 7
+      - name: Publish SRPM to GitHub Releases
+        if: github.event_name != 'pull_request' && steps.variant.outputs.should_build == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NVR="${{ needs.check-kernel.outputs.nvr }}"
+          RELEASE_NOTES="Patched kernel SRPMs for ${NVR} with HDMI FRL support"
+
+          if ! gh release view "${NVR}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release create "${NVR}" \
+              --repo "${{ github.repository }}" \
+              --target main \
+              --title "kernel ${NVR}" \
+              --notes "${RELEASE_NOTES}" \
+              || gh release view "${NVR}" --repo "${{ github.repository }}" >/dev/null
+          fi
+
+          gh release upload "${NVR}" "${PATCHED_SRPM}" \
+            --repo "${{ github.repository }}" \
+            --clobber
 
       - name: Setup COPR credentials
         if: github.event_name != 'pull_request' && steps.variant.outputs.should_build == 'true'
@@ -234,49 +248,10 @@ jobs:
             --timeout 25200 \
             --nowait
 
-  publish-release:
-    needs:
-      - check-kernel
-      - build
-    if: github.event_name != 'pull_request' && needs.check-kernel.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Download SRPM artifacts
-        uses: actions/download-artifact@v5
-        with:
-          path: artifacts
-          pattern: kernel-srpm-*
-          merge-multiple: true
-
-      - name: Publish SRPMs to GitHub Releases
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          NVR="${{ needs.check-kernel.outputs.nvr }}"
-
-          if ! ls artifacts/*.src.rpm >/dev/null 2>&1; then
-            echo "No SRPM artifacts to publish"
-            exit 1
-          fi
-
-          if gh release view "${NVR}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "${NVR}" artifacts/*.src.rpm \
-              --repo "${{ github.repository }}" \
-              --clobber
-          else
-            gh release create "${NVR}" \
-              --repo "${{ github.repository }}" \
-              --target main \
-              --title "kernel ${NVR}" \
-              --notes "Patched kernel SRPMs for ${NVR} with HDMI FRL support" \
-              artifacts/*.src.rpm
-          fi
-
   update-state:
     needs:
       - check-kernel
       - build
-      - publish-release
     if: github.event_name != 'pull_request' && needs.check-kernel.outputs.should_build == 'true'
     runs-on: ubuntu-latest
     steps:
