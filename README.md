@@ -1,12 +1,23 @@
-# Fedora Kernel with HDMI 2.1 FRL Patches
+# Fedora Kernel with HDMI 2.1 FRL Support
 
-Automated builds of Fedora 44's stable kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU. The current patch is based on the experimental `hdmi_frl` branch and is being tested against Fedora 44 kernels.
+Automated compatibility builds of Fedora 44's stable Linux 7.1 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU.
 
-Fedora 44 is the active build target. Fedora 43 COPR chroots are left enabled with their last successful builds, but new Fedora 43 kernels are no longer built.
+Native AMD HDMI FRL support is upstream in Linux 7.2. These custom builds are therefore limited to kernels older than 7.2 and will be retired when Fedora 44 moves to Linux 7.2. Fedora 43 COPR chroots remain available with their last successful builds, but receive no new builds.
+
+## Linux 7.2 and Newer
+
+Do not install the patched COPR kernel on Linux 7.2 or newer. Use Fedora's stock kernel and enable the upstream AMD implementation, which is currently disabled by default:
+
+```bash
+sudo grubby --update-kernel=ALL --args="amdgpu.dcfeaturemask=0x400"
+sudo reboot
+```
+
+If `amdgpu.dcfeaturemask` is already set, combine its existing bits with `0x400` instead of adding a second value.
 
 ## Patches Included
 
-Single squashed, kernel-only patch from [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl), enabling HDMI 2.1 FRL support on AMD GPUs. This includes:
+For Linux 7.1 only, the repository carries a squashed, kernel-only compatibility patch from [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl), rebased onto Fedora 44's kernel. It includes:
 
 - HPO (High-Performance Output) HDMI encoder support for newer DCN generations
 - HDMI FRL link validation and bandwidth checking
