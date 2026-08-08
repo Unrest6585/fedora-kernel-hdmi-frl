@@ -84,6 +84,17 @@ jobs:
           echo "Latest stable Fedora kernel NVR: ${NVR}"
           echo "nvr=${NVR}" >> "$GITHUB_OUTPUT"
 
+          KERNEL_VERSION="${NVR#kernel-}"
+          KERNEL_VERSION="${KERNEL_VERSION%%-*}"
+          rc=0
+          rpmdev-vercmp "${KERNEL_VERSION}" "7.2.0" &>/dev/null || rc=$?
+          if [ "${rc}" -ne 12 ]; then
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping custom build: Linux ${KERNEL_VERSION} has upstream AMD HDMI FRL support"
+            echo "Use the stock kernel with amdgpu.dcfeaturemask=0x400"
+            exit 0
+          fi
+
           SHOULD_BUILD=false
           HAS_OLDER_STATE=false
           for state_file in "${DEFAULT_STATE}" "${P2P_STATE}"; do

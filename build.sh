@@ -6,6 +6,7 @@ set -euo pipefail
 FEDORA_VERSION="${FEDORA_VERSION:-44}"
 ENABLE_P2P="${ENABLE_P2P:-0}"
 KERNEL_NVR="${KERNEL_NVR:-}"
+UPSTREAM_FRL_VERSION="7.2.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
 PATCHES_DIR="${SCRIPT_DIR}/patches"
@@ -46,6 +47,18 @@ else
         exit 1
     fi
     echo "==> Using newest stable: ${NVR}"
+fi
+
+# Native AMD HDMI FRL support is upstream as of Linux 7.2. Applying this
+# compatibility patch there would duplicate the upstream implementation.
+KERNEL_VERSION="${NVR#kernel-}"
+KERNEL_VERSION="${KERNEL_VERSION%%-*}"
+rc=0
+rpmdev-vercmp "${KERNEL_VERSION}" "${UPSTREAM_FRL_VERSION}" &>/dev/null || rc=$?
+if [ "${rc}" -ne 12 ]; then
+    echo "Error: Kernel ${KERNEL_VERSION} already has upstream AMD HDMI FRL support."
+    echo "Use the stock kernel with amdgpu.dcfeaturemask=0x400 instead."
+    exit 1
 fi
 
 # Download the SRPM from Koji
