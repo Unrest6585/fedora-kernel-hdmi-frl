@@ -30,6 +30,8 @@ Since Linux 7.2, `CONFIG_HSA_AMD_P2P` no longer depends on `CONFIG_DMABUF_MOVE_N
 
 ### From COPR (Recommended)
 
+Builds are published for Fedora 44 only. Fedora 43 already ships Linux 7.2 and is close to end of life; its old Linux 7.1 builds were removed.
+
 ```bash
 # Enable the COPR repository
 sudo dnf copr enable sneed/kernel-hdmi-frl
