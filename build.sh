@@ -1,21 +1,16 @@
 #!/bin/bash
-# Build script for patched Fedora kernel with HDMI FRL support
-# Downloads kernel SRPM from Koji, applies FRL patch, builds patched SRPM
+# Build script for patched Fedora kernel with HDMI FRL fixes
+# Downloads kernel SRPM from Koji, applies the Linux 7.2 FRL patches, builds patched SRPM
 set -euo pipefail
 
 FEDORA_VERSION="${FEDORA_VERSION:-44}"
-ENABLE_P2P="${ENABLE_P2P:-0}"
 KERNEL_NVR="${KERNEL_NVR:-}"
-UPSTREAM_FRL_VERSION="7.2.0"
+MIN_KERNEL_VERSION="7.2.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
-PATCHES_DIR="${SCRIPT_DIR}/patches"
+PATCHES_DIR="${SCRIPT_DIR}/patches/7.2"
 
-if [ "${ENABLE_P2P}" = "1" ]; then
-    RELEASE_SUFFIX=".hdmi.frl.p2p"
-else
-    RELEASE_SUFFIX=".hdmi.frl"
-fi
+RELEASE_SUFFIX=".hdmi.frl"
 
 echo "==> Setting up build environment..."
 mkdir -p "${BUILD_DIR}"
@@ -49,15 +44,16 @@ else
     echo "==> Using newest stable: ${NVR}"
 fi
 
-# Native AMD HDMI FRL support is upstream as of Linux 7.2. Applying this
-# compatibility patch there would duplicate the upstream implementation.
+# Linux 7.2 ships AMD HDMI FRL upstream (off by default). The patches in
+# patches/7.2 enable it by default and fix FreeSync detection on FRL sinks;
+# they target the 7.2 source layout only.
 KERNEL_VERSION="${NVR#kernel-}"
 KERNEL_VERSION="${KERNEL_VERSION%%-*}"
 rc=0
-rpmdev-vercmp "${KERNEL_VERSION}" "${UPSTREAM_FRL_VERSION}" &>/dev/null || rc=$?
-if [ "${rc}" -ne 12 ]; then
-    echo "Error: Kernel ${KERNEL_VERSION} already has upstream AMD HDMI FRL support."
-    echo "Use the stock kernel with amdgpu.dcfeaturemask=0x400 instead."
+rpmdev-vercmp "${KERNEL_VERSION}" "${MIN_KERNEL_VERSION}" &>/dev/null || rc=$?
+if [ "${rc}" -eq 12 ]; then
+    echo "Error: Kernel ${KERNEL_VERSION} is older than ${MIN_KERNEL_VERSION}."
+    echo "The Linux 7.1 FRL patch was retired; see git history."
     exit 1
 fi
 
@@ -71,24 +67,11 @@ else
 fi
 
 echo "==> Extracting SRPM..."
-rpm2cpio "${SRPM}" | cpio -idmv
+rpm2cpio "${SRPM}" | cpio -idmvu
 
 # Copy patches
-echo "==> Copying HDMI FRL patches..."
+echo "==> Copying HDMI FRL patches for Linux 7.2..."
 cp "${PATCHES_DIR}"/*.patch .
-
-# Optionally inject ROCm P2P config into kernel-local
-# (CONFIG_HSA_AMD_P2P depends on CONFIG_DMABUF_MOVE_NOTIFY, both off by default in Fedora)
-if [ "${ENABLE_P2P}" = "1" ]; then
-    echo "==> Injecting ROCm P2P config into kernel-local..."
-    cat > kernel-local <<'EOF'
-# Enable KFD peer-to-peer link creation between AMD GPUs over PCIe.
-# Without these, kfd_add_peer_prop() / p2p_links population is #ifdef'd out
-# and hipDeviceCanAccessPeer returns false for every GPU pair.
-CONFIG_DMABUF_MOVE_NOTIFY=y
-CONFIG_HSA_AMD_P2P=y
-EOF
-fi
 
 # Modify the spec file to include our patches
 echo "==> Modifying kernel.spec..."

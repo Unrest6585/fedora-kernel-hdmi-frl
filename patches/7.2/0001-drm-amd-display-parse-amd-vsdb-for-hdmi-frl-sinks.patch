@@ -1,0 +1,21 @@
+From: Claude <noreply@anthropic.com>
+Subject: [PATCH] drm/amd/display: parse AMD VSDB for HDMI FRL sinks
+
+With DC_FRL_MASK set, FRL capable HDMI sinks are detected as
+SIGNAL_TYPE_HDMI_FRL. amdgpu_dm_update_freesync_caps() only parsed the
+AMD VSDB for SIGNAL_TYPE_HDMI_TYPE_A, so FreeSync over HDMI was never
+reported (vrr_capable = 0) as soon as FRL was enabled. Use
+dc_is_hdmi_signal() to cover both TMDS and FRL.
+
+---
+--- a/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
++++ b/drivers/gpu/drm/amd/display/amdgpu_dm/amdgpu_dm.c
+@@ -14056,7 +14056,7 @@
+ 			amdgpu_dm_connector->as_type = ADAPTIVE_SYNC_TYPE_EDP;
+ 		}
+ 
+-	} else if (drm_edid && sink->sink_signal == SIGNAL_TYPE_HDMI_TYPE_A) {
++	} else if (drm_edid && dc_is_hdmi_signal(sink->sink_signal)) {
+ 		i = parse_hdmi_amd_vsdb(amdgpu_dm_connector, edid, &vsdb_info);
+ 		if (i >= 0) {
+ 			amdgpu_dm_connector->vsdb_info = vsdb_info;

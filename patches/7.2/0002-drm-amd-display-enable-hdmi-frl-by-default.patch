@@ -1,0 +1,30 @@
+Subject: [PATCH] drm/amd/display: Enable HDMI FRL by default
+
+Backport of the reviewed upstream patch by Fangzhi Zuo (amd-gfx,
+August 2026) that adds DC_FRL_MASK to the default dcfeaturemask, so
+HDMI 2.1 FRL works without amdgpu.dcfeaturemask=0x402. Setting
+amdgpu.dcfeaturemask explicitly still overrides the default.
+
+---
+--- a/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
++++ b/drivers/gpu/drm/amd/amdgpu/amdgpu_drv.c
+@@ -217,7 +217,7 @@
+  * PSR (bit 3) disabled by default
+  * EDP NO POWER SEQUENCING (bit 4) disabled by default
+  */
+-uint amdgpu_dc_feature_mask = 2;
++uint amdgpu_dc_feature_mask = DC_MULTI_MON_PP_MCLK_SWITCH_MASK | DC_FRL_MASK;
+ uint amdgpu_dc_debug_mask;
+ uint amdgpu_dc_visual_confirm;
+ int amdgpu_async_gfx_ring = 1;
+--- a/drivers/gpu/drm/amd/include/amd_shared.h
++++ b/drivers/gpu/drm/amd/include/amd_shared.h
+@@ -287,7 +287,7 @@
+ 	 */
+ 	DC_REPLAY_MASK = (1 << 9),
+ 	/**
+-	 * @DC_FRL_MASK: (0x400) disabled by default
++	 * @DC_FRL_MASK: (0x400) enabled by default
+ 	 */
+ 	DC_FRL_MASK = (1 << 10),
+ };

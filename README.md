@@ -1,53 +1,37 @@
-# Fedora Kernel with HDMI 2.1 FRL Support
+# Fedora Kernel with HDMI 2.1 FRL and FreeSync
 
-> [!WARNING]
-> **Phased out.** This project no longer builds new kernels. Both COPR repositories (`sneed/kernel-hdmi-frl` and `sneed/kernel-hdmi-frl-p2p`) are frozen at their last builds (Linux 7.1.13) and will not receive updates, including security fixes. Fedora 44 ships Linux 7.2, which covers both use cases with the stock kernel:
->
-> - **HDMI 2.1 FRL** is upstream in Linux 7.2 (enable it with `amdgpu.dcfeaturemask=0x400`, see below).
-> - **ROCm P2P** (`CONFIG_HSA_AMD_P2P`) no longer depends on `CONFIG_DMABUF_MOVE_NOTIFY` in Linux 7.2 and is enabled in Fedora's stock kernel config.
->
-> Disable the COPR repository and switch to Fedora's kernel:
->
-> ```bash
-> sudo dnf copr disable sneed/kernel-hdmi-frl      # or sneed/kernel-hdmi-frl-p2p
-> sudo dnf upgrade --refresh kernel
-> ```
+Builds of Fedora 44's stable Linux 7.2 kernel with two small AMDGPU fixes that make HDMI 2.1 work out of the box, including FreeSync/VRR. Intended as a stopgap until both changes are in Fedora's kernel.
 
-These were compatibility builds of Fedora's stable Linux 7.1 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU, plus an optional ROCm P2P-enabled variant.
+Linux 7.2 ships native AMD HDMI 2.1 FRL (Fixed Rate Link) support, but:
 
-## Linux 7.2 and Newer
-
-Use Fedora's stock kernel and enable the upstream AMD HDMI FRL implementation, which is currently disabled by default:
-
-```bash
-sudo grubby --update-kernel=ALL --args="amdgpu.dcfeaturemask=0x400"
-sudo reboot
-```
-
-If `amdgpu.dcfeaturemask` is already set, combine its existing bits with `0x400` instead of adding a second value.
+1. **FRL is disabled by default** and needs `amdgpu.dcfeaturemask=0x402`.
+2. **VRR disappears as soon as FRL is active.** FRL sinks are detected as `SIGNAL_TYPE_HDMI_FRL`, but `amdgpu_dm_update_freesync_caps()` only parses the AMD FreeSync data block for `SIGNAL_TYPE_HDMI_TYPE_A`, so `vrr_capable` stays `0` (e.g. LG C1/C4 at 4K@120). See [ValveSoftware/SteamOS#2809](https://github.com/ValveSoftware/SteamOS/issues/2809).
 
 ## Patches Included
 
-For Linux 7.1 only, the repository carries a squashed, kernel-only compatibility patch from [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl), rebased onto Fedora 44's kernel. It includes:
+`patches/7.2/` (Linux 7.2 only):
 
-- HPO (High-Performance Output) HDMI encoder support for newer DCN generations
-- HDMI FRL link validation and bandwidth checking
-- DTBCLK programming for HDMI FRL
-- HDMI FRL signal upgrade and rate negotiation
-- EDID FRL and HDMI DSC capability parsing improvements
-- HDMI VRR (Variable Refresh Rate) support
-- ALLM (Auto Low Latency Mode) support
-- YCbCr 4:2:0 handling
-- HDMI audio fixes for FRL
-- DPMS and shutdown handling updates
-- Passive VRR properties
+| Patch | Description | Upstream |
+|-------|-------------|----------|
+| `0001-drm-amd-display-parse-amd-vsdb-for-hdmi-frl-sinks.patch` | Use `dc_is_hdmi_signal()` so FreeSync is detected on FRL links | Same change as Tomasz Pakuła's "Switch to signal type helper functions from DC" (`Lawstorant/linux` `hdmi-7.2`); not in mainline yet |
+| `0002-drm-amd-display-enable-hdmi-frl-by-default.patch` | Add `DC_FRL_MASK` to the default `dcfeaturemask` (`0x402`) | Backport of AMD's reviewed [patch](https://ratatoskr.run/amd-gfx/2026/08/17470579/t), expected in Linux 7.4 |
+
+Setting `amdgpu.dcfeaturemask` explicitly still overrides the default, e.g. `amdgpu.dcfeaturemask=0x2` turns FRL off again.
+
+Not included: HDMI Forum VRR (VTEM) and ALLM. Displays that only support HDMI Forum VRR without FreeSync get no VRR until AMD's HDMI VRR/ALLM series lands (expected in Linux 7.4).
+
+Builds for Linux 7.1 used a squashed compatibility patch from [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl); it was retired with Linux 7.2 and is still available in the git history.
+
+### ROCm P2P
+
+Since Linux 7.2, `CONFIG_HSA_AMD_P2P` no longer depends on `CONFIG_DMABUF_MOVE_NOTIFY` and is enabled in Fedora's stock config, so these kernels support ROCm P2P without changes. The separate `sneed/kernel-hdmi-frl-p2p` COPR was removed; if you still have it configured, run `sudo dnf copr remove sneed/kernel-hdmi-frl-p2p` and enable `sneed/kernel-hdmi-frl` instead.
 
 ## Installation
 
 ### From COPR (Recommended)
 
 ```bash
-# Enable the default FRL COPR repository
+# Enable the COPR repository
 sudo dnf copr enable sneed/kernel-hdmi-frl
 
 # Install the patched kernel
@@ -57,15 +41,12 @@ sudo dnf install kernel
 sudo reboot
 ```
 
-For the ROCm P2P-enabled variant:
+No kernel parameter is needed. If you added `amdgpu.dcfeaturemask=0x402` earlier, you can keep or remove it; replace a bare `0x400`, which also clears the default `0x2` bit (`sudo grubby --update-kernel=ALL --remove-args=amdgpu.dcfeaturemask`). Enable FreeSync on the display (on LG TVs: Game Optimizer -> AMD FreeSync Premium) and check:
 
 ```bash
-sudo dnf copr enable sneed/kernel-hdmi-frl-p2p
-sudo dnf install kernel
-sudo reboot
+cat /sys/module/amdgpu/parameters/dcfeaturemask   # 1026 (= 0x402)
 ```
 
-Do not enable both COPRs at the same time. Both publish `kernel` packages, so keeping a single variant enabled avoids ambiguous update selection.
 
 ### Manual Build
 
@@ -77,11 +58,11 @@ sudo dnf install rpm-build rpmdevtools koji cpio
 git clone https://github.com/sneed/fedora-kernel-hdmi-frl.git
 cd fedora-kernel-hdmi-frl
 
-# Run the default FRL build
+# Build the SRPM for the newest Fedora 44 kernel
 ./build.sh
 
-# Or build the ROCm P2P-enabled variant
-ENABLE_P2P=1 ./build.sh
+# Or pin a kernel
+KERNEL_NVR=kernel-7.2.8-200.fc44 ./build.sh
 
 # Install the resulting SRPM or build locally
 rpmbuild --rebuild kernel-*.src.rpm
@@ -109,14 +90,20 @@ Add these secrets to your repository (Settings -> Secrets and variables -> Actio
 
 ### 3. Workflow Triggers
 
-The scheduled and push triggers have been removed since the project was phased out. The workflow can still be run manually via workflow_dispatch, but it skips Linux 7.2 and newer.
+The workflow runs:
+- **Daily** at 6 AM UTC to check for new kernels
+- **On push** when patches or workflow files change
+- **Manually** via workflow_dispatch (with optional force build)
 
-The workflow publishes both `sneed/kernel-hdmi-frl` and `sneed/kernel-hdmi-frl-p2p`, and tracks their last built Fedora kernel NVR independently.
+Kernels older than Linux 7.2 are skipped.
+
+The workflow publishes `sneed/kernel-hdmi-frl` and tracks the last built Fedora kernel NVR in `state/last_nvr_default`.
 
 ## Upstream Source
 
-- **Patches from**: [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl)
-- **Authors**: Michal Kopec, Tomasz Pakula
+- **FreeSync over FRL fix**: same change as Tomasz Pakuła's `hdmi-7.2` branch (`Lawstorant/linux`)
+- **FRL default**: Fangzhi Zuo (AMD), reviewed by Harry Wentland
+- **Linux 7.1 patch (retired)**: [mkopec/linux hdmi_frl](https://github.com/mkopec/linux/tree/hdmi_frl), Michal Kopec, Tomasz Pakuła
 
 ## License
 

@@ -1,8 +1,9 @@
 name: Build and Upload to COPR
 
 on:
-  # Phased out: Linux 7.2 ships HDMI FRL upstream and Fedora enables
-  # CONFIG_HSA_AMD_P2P in its stock config, so no scheduled or push builds.
+  schedule:
+    # Check for new kernels daily at 6 AM UTC
+    - cron: '0 6 * * *'
   workflow_dispatch:
     inputs:
       force_build:
@@ -10,6 +11,13 @@ on:
         required: false
         default: 'false'
         type: boolean
+  push:
+    branches:
+      - main
+    paths:
+      - 'patches/**'
+      - '.github/workflows/build.yml'
+      - 'build.sh'
 
 concurrency:
   group: kernel-frl-build
@@ -42,7 +50,6 @@ jobs:
         run: |
           LEGACY_STATE="state/last_nvr"
           DEFAULT_STATE="state/last_nvr_default"
-          P2P_STATE="state/last_nvr_p2p"
 
           get_last_nvr() {
             local state_file="$1"
@@ -80,16 +87,15 @@ jobs:
           KERNEL_VERSION="${KERNEL_VERSION%%-*}"
           rc=0
           rpmdev-vercmp "${KERNEL_VERSION}" "7.2.0" &>/dev/null || rc=$?
-          if [ "${rc}" -ne 12 ]; then
+          if [ "${rc}" -eq 12 ]; then
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping custom build: Linux ${KERNEL_VERSION} has upstream AMD HDMI FRL support"
-            echo "Use the stock kernel with amdgpu.dcfeaturemask=0x400"
+            echo "Skipping: Linux ${KERNEL_VERSION} predates the 7.2 patch set"
             exit 0
           fi
 
           SHOULD_BUILD=false
           HAS_OLDER_STATE=false
-          for state_file in "${DEFAULT_STATE}" "${P2P_STATE}"; do
+          for state_file in "${DEFAULT_STATE}"; do
             LAST_NVR=$(get_last_nvr "${state_file}")
             echo "State ${state_file}: ${LAST_NVR:-<none>}"
 
@@ -116,13 +122,13 @@ jobs:
             echo "Skipping: Koji lookup is older than recorded state"
           elif [ "${{ github.event_name }}" = "push" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "Push event - rebuilding both variants"
+            echo "Push event - rebuilding"
           elif [ "${SHOULD_BUILD}" = "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "At least one variant needs a rebuild"
+            echo "New kernel ${NVR} - will build"
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "All variants already built for ${NVR}"
+            echo "Kernel ${NVR} already built, skipping"
           fi
 
   build:
@@ -136,14 +142,8 @@ jobs:
         include:
           - variant: default
             copr_project: kernel-hdmi-frl
-            enable_p2p: '0'
             release_suffix: '.hdmi.frl'
             state_file: state/last_nvr_default
-          - variant: p2p
-            copr_project: kernel-hdmi-frl-p2p
-            enable_p2p: '1'
-            release_suffix: '.hdmi.frl.p2p'
-            state_file: state/last_nvr_p2p
     container:
       image: fedora:44
     steps:
@@ -198,7 +198,6 @@ jobs:
       - name: Build SRPM
         if: steps.variant.outputs.should_build == 'true'
         env:
-          ENABLE_P2P: ${{ matrix.enable_p2p }}
           KERNEL_NVR: ${{ needs.check-kernel.outputs.nvr }}
         run: |
           rm -f "$GITHUB_WORKSPACE"/kernel-*${{ matrix.release_suffix }}*.src.rpm
@@ -214,7 +213,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           NVR="${{ needs.check-kernel.outputs.nvr }}"
-          RELEASE_NOTES="Patched kernel SRPMs for ${NVR} with HDMI FRL support"
+          RELEASE_NOTES="Patched kernel SRPMs for ${NVR} with HDMI FRL enabled by default and FreeSync over FRL"
 
           if ! gh release view "${NVR}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             gh release create "${NVR}" \
@@ -264,7 +263,7 @@ jobs:
           NVR="${{ needs.check-kernel.outputs.nvr }}"
           mkdir -p state
           printf '%s\n' "${NVR}" > state/last_nvr_default
-          printf '%s\n' "${NVR}" > state/last_nvr_p2p
+          rm -f state/last_nvr_p2p
           rm -f state/last_nvr
 
       - name: Commit state update
