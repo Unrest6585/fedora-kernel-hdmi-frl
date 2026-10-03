@@ -1,9 +1,8 @@
 name: Build and Upload to COPR
 
 on:
-  schedule:
-    # Check for new kernels daily at 6 AM UTC
-    - cron: '0 6 * * *'
+  # Phased out: Linux 7.2 ships HDMI FRL upstream and Fedora enables
+  # CONFIG_HSA_AMD_P2P in its stock config, so no scheduled or push builds.
   workflow_dispatch:
     inputs:
       force_build:
@@ -11,13 +10,6 @@ on:
         required: false
         default: 'false'
         type: boolean
-  push:
-    branches:
-      - main
-    paths:
-      - 'patches/**'
-      - '.github/workflows/build.yml'
-      - 'build.sh'
 
 concurrency:
   group: kernel-frl-build

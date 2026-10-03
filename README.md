@@ -1,12 +1,23 @@
 # Fedora Kernel with HDMI 2.1 FRL Support
 
-Automated compatibility builds of Fedora 44's stable Linux 7.1 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU.
+> [!WARNING]
+> **Phased out.** This project no longer builds new kernels. Both COPR repositories (`sneed/kernel-hdmi-frl` and `sneed/kernel-hdmi-frl-p2p`) are frozen at their last builds (Linux 7.1.13) and will not receive updates, including security fixes. Fedora 44 ships Linux 7.2, which covers both use cases with the stock kernel:
+>
+> - **HDMI 2.1 FRL** is upstream in Linux 7.2 (enable it with `amdgpu.dcfeaturemask=0x400`, see below).
+> - **ROCm P2P** (`CONFIG_HSA_AMD_P2P`) no longer depends on `CONFIG_DMABUF_MOVE_NOTIFY` in Linux 7.2 and is enabled in Fedora's stock kernel config.
+>
+> Disable the COPR repository and switch to Fedora's kernel:
+>
+> ```bash
+> sudo dnf copr disable sneed/kernel-hdmi-frl      # or sneed/kernel-hdmi-frl-p2p
+> sudo dnf upgrade --refresh kernel
+> ```
 
-Native AMD HDMI FRL support is upstream in Linux 7.2. These custom builds are therefore limited to kernels older than 7.2 and will be retired when Fedora 44 moves to Linux 7.2. Fedora 43 COPR chroots remain available with their last successful builds, but receive no new builds.
+These were compatibility builds of Fedora's stable Linux 7.1 kernel with mkopec's HDMI 2.1 FRL (Fixed Rate Link) patches for AMDGPU, plus an optional ROCm P2P-enabled variant.
 
 ## Linux 7.2 and Newer
 
-Do not install the patched COPR kernel on Linux 7.2 or newer. Use Fedora's stock kernel and enable the upstream AMD implementation, which is currently disabled by default:
+Use Fedora's stock kernel and enable the upstream AMD HDMI FRL implementation, which is currently disabled by default:
 
 ```bash
 sudo grubby --update-kernel=ALL --args="amdgpu.dcfeaturemask=0x400"
@@ -98,10 +109,7 @@ Add these secrets to your repository (Settings -> Secrets and variables -> Actio
 
 ### 3. Workflow Triggers
 
-The workflow runs:
-- **Daily** at 6 AM UTC to check for new kernels
-- **On push** when patches or workflow files change
-- **Manually** via workflow_dispatch (with optional force build)
+The scheduled and push triggers have been removed since the project was phased out. The workflow can still be run manually via workflow_dispatch, but it skips Linux 7.2 and newer.
 
 The workflow publishes both `sneed/kernel-hdmi-frl` and `sneed/kernel-hdmi-frl-p2p`, and tracks their last built Fedora kernel NVR independently.
 
