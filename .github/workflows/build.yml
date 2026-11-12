@@ -89,7 +89,7 @@ jobs:
           rpmdev-vercmp "${KERNEL_VERSION}" "7.2.0" &>/dev/null || rc=$?
           if [ "${rc}" -eq 12 ]; then
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: Linux ${KERNEL_VERSION} predates the 7.2 patch set"
+            echo "Skipping: Linux ${KERNEL_VERSION} predates Linux 7.2 (no patch set)"
             exit 0
           fi
 

@@ -1,15 +1,15 @@
 # Fedora Kernel with HDMI 2.1 FRL and FreeSync
 
-Builds of Fedora 44's stable Linux 7.2 kernel with two small AMDGPU fixes that make HDMI 2.1 work out of the box, including FreeSync/VRR. Intended as a stopgap until both changes are in Fedora's kernel.
+Builds of Fedora 44's stable kernel (Linux 7.2 and newer) with two small AMDGPU fixes that make HDMI 2.1 work out of the box, including FreeSync/VRR. Intended as a stopgap until both changes are in Fedora's kernel.
 
-Linux 7.2 ships native AMD HDMI 2.1 FRL (Fixed Rate Link) support, but:
+Since Linux 7.2, the kernel ships native AMD HDMI 2.1 FRL (Fixed Rate Link) support, but:
 
 1. **FRL is disabled by default** and needs `amdgpu.dcfeaturemask=0x402`.
 2. **VRR disappears as soon as FRL is active.** FRL sinks are detected as `SIGNAL_TYPE_HDMI_FRL`, but `amdgpu_dm_update_freesync_caps()` only parses the AMD FreeSync data block for `SIGNAL_TYPE_HDMI_TYPE_A`, so `vrr_capable` stays `0` (e.g. LG C1/C4 at 4K@120). See [ValveSoftware/SteamOS#2809](https://github.com/ValveSoftware/SteamOS/issues/2809).
 
 ## Patches Included
 
-`patches/7.2/` (Linux 7.2 only):
+Each kernel series has its own patch set in `patches/<major.minor>/` (`patches/7.2/`, `patches/7.3/`), since the amdgpu display code moves between releases (in 7.3 the FreeSync caps code moved from `amdgpu_dm.c` to `amdgpu_dm_connector.c`). `build.sh` picks the set matching the kernel and fails if there is none, so a new kernel series needs a rebased set first:
 
 | Patch | Description | Upstream |
 |-------|-------------|----------|

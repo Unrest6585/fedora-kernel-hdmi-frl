@@ -1,6 +1,6 @@
 #!/bin/bash
 # Build script for patched Fedora kernel with HDMI FRL fixes
-# Downloads kernel SRPM from Koji, applies the Linux 7.2 FRL patches, builds patched SRPM
+# Downloads kernel SRPM from Koji, applies the FRL patches for its Linux series, builds patched SRPM
 set -euo pipefail
 
 FEDORA_VERSION="${FEDORA_VERSION:-44}"
@@ -8,7 +8,6 @@ KERNEL_NVR="${KERNEL_NVR:-}"
 MIN_KERNEL_VERSION="7.2.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${SCRIPT_DIR}/build"
-PATCHES_DIR="${SCRIPT_DIR}/patches/7.2"
 
 RELEASE_SUFFIX=".hdmi.frl"
 
@@ -44,9 +43,10 @@ else
     echo "==> Using newest stable: ${NVR}"
 fi
 
-# Linux 7.2 ships AMD HDMI FRL upstream (off by default). The patches in
-# patches/7.2 enable it by default and fix FreeSync detection on FRL sinks;
-# they target the 7.2 source layout only.
+# Linux 7.2+ ships AMD HDMI FRL upstream (off by default). The patches in
+# patches/<major.minor> enable it by default and fix FreeSync detection on
+# FRL sinks. The amdgpu_dm source layout changes between releases, so each
+# kernel series gets its own patch set.
 KERNEL_VERSION="${NVR#kernel-}"
 KERNEL_VERSION="${KERNEL_VERSION%%-*}"
 rc=0
@@ -56,6 +56,15 @@ if [ "${rc}" -eq 12 ]; then
     echo "The Linux 7.1 FRL patch was retired; see git history."
     exit 1
 fi
+
+KERNEL_SERIES="$(echo "${KERNEL_VERSION}" | cut -d. -f1,2)"
+PATCHES_DIR="${SCRIPT_DIR}/patches/${KERNEL_SERIES}"
+if ! compgen -G "${PATCHES_DIR}/*.patch" >/dev/null; then
+    echo "Error: No patches for Linux ${KERNEL_SERIES} in ${PATCHES_DIR}."
+    echo "Rebase the newest patch set in patches/ onto Linux ${KERNEL_SERIES}."
+    exit 1
+fi
+echo "==> Using Linux ${KERNEL_SERIES} patch set: ${PATCHES_DIR}"
 
 # Download the SRPM from Koji
 SRPM="${NVR}.src.rpm"
@@ -70,7 +79,7 @@ echo "==> Extracting SRPM..."
 rpm2cpio "${SRPM}" | cpio -idmvu
 
 # Copy patches
-echo "==> Copying HDMI FRL patches for Linux 7.2..."
+echo "==> Copying HDMI FRL patches for Linux ${KERNEL_SERIES}..."
 cp "${PATCHES_DIR}"/*.patch .
 
 # Modify the spec file to include our patches
